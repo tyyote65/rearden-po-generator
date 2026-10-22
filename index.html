@@ -27,7 +27,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}td,th{border-bottom:1px
 <label>Project</label><div class="row"><select id="s-prj"></select><button class="sec" id="add-prj" style="flex:0 0 auto;margin:0">+ Add project</button></div>
 <div id="un-row" style="display:none"><label>Unit (vehicle / trailer) — one-time purchases</label><div class="row"><select id="s-un"></select><button class="sec" id="add-un" style="flex:0 0 auto;margin:0">+ Add unit</button></div></div>
 <label>Spend type</label><div class="row"><select id="s-sp"></select><button class="sec" id="add-sp" style="flex:0 0 auto;margin:0">+ Add category</button></div>
-<label>Project tool / item (optional)</label><div class="row"><select id="s-it"></select><button class="sec" id="add-it" style="flex:0 0 auto;margin:0">+ Add tool/item</button></div>
+<label>Item optional</label><div class="row"><select id="s-it"></select><button class="sec" id="add-it" style="flex:0 0 auto;margin:0">+ Add item optional</button></div>
 <label>Vendor</label><select id="s-vn"></select>
 <label>Requested by / note</label><input id="note" placeholder="Name, what it's for">
 <div class="note" style="margin-top:10px">Next code preview: <b class="mono" id="preview">—</b></div><button id="gen">Generate PO</button>
@@ -37,7 +37,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}td,th{border-bottom:1px
 <div class="card"><h2>Issued PO log</h2><div style="overflow-x:auto"><table id="log"></table></div>
 <button class="sec" id="exj">Export JSON</button><button class="sec" id="exc">Export CSV</button><label>Import JSON (merges, never reuses numbers)</label><input type="file" id="imp" accept=".json"></div>
 <div class="card"><h2>Manage dropdowns</h2><p class="note">Retire = soft delete: the entry stops generating new POs, but old codes still decode. Nothing is ever hard-deleted.</p>
-<label>List</label><select id="m-list"><option value="bu">Business units</option><option value="prj">Projects (in selected BU)</option><option value="it">Tools/items (in selected project)</option><option value="sp">Spend categories</option><option value="vn">Vendors</option><option value="un">Units (vehicles / trailers)</option></select>
+<label>List</label><select id="m-list"><option value="bu">Business units</option><option value="prj">Projects (in selected BU)</option><option value="it">Item optional (in selected project)</option><option value="sp">Spend categories</option><option value="vn">Vendors</option><option value="un">Units (vehicles / trailers)</option></select>
 <div class="row"><input id="m-code" placeholder="Code e.g. P04" maxlength="3"><input id="m-name" placeholder="Name"></div>
 <label class="note"><input type="checkbox" id="m-ot" style="width:auto;min-height:auto"> item is one-time</label>
 <button id="m-add">Add</button><div id="m-rows"></div></div>
@@ -138,7 +138,7 @@ $('add-un').onclick=()=>{let ty=(prompt('Unit type: Vehicle or Trailer','Vehicle
  const unit=(prompt(ty+' number (e.g. 12)')||'').trim().toUpperCase();if(!unit)return;if(UNITS.some(x=>x.type==ty&&x.unit==unit))return alert(ty+' '+unit+' already exists (check retired units in Manage)');
  const vin=(prompt('VIN (optional)')||'').trim().toUpperCase(),notes=(prompt('Notes (optional)')||'').trim();let n=1;while(UNITS.some(x=>x.code=='U'+String(n).padStart(2,'0')))n++;const code='U'+String(n).padStart(2,'0');
  UNITS.push({code,type:ty,unit,vin,notes,name:ty+' '+unit,active:true});save();unUpdate();$('s-un').value=code;renderManage();preview()};
-$('add-it').onclick=()=>addEntry('it',3,'project tool/item');
+$('add-it').onclick=()=>addEntry('it',3,'item optional');
 $('add-prj').onclick=()=>addEntry('prj',3,'project');$('add-sp').onclick=()=>addEntry('sp',1,'spend category');
 $("signin").onclick=()=>!msal?alert("Sign-in library did not load; check connection and reload."):msal.loginRedirect({scopes:SCOPES});$('signout').onclick=()=>msal&&msal.logoutRedirect({account});
 $('cfg-save').onclick=()=>{cfg.drive=$('cfg-drive').value.trim();cfg.item=$('cfg-item').value.trim();localStorage.setItem('po-drive',cfg.drive);localStorage.setItem('po-item',cfg.item);renderAuth()};

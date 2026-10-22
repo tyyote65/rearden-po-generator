@@ -67,7 +67,7 @@ async function sharedIssue(build,meta,tries=5){const base=`${GRAPH}/drives/${cfg
   const m=await gfetch(base+'?$select=id,eTag');if(!m.ok)throw Error('Counter metadata '+m.status);const etag=(await m.json()).eTag;
   const c=await gfetch(base+'/content');if(!c.ok)throw Error('Counter read '+c.status);const J=await c.json();J.issued=J.issued||[];
   let n=J.next||1,code=build(n);while(J.issued.some(x=>x.code==code))code=build(++n);
-  const rec={code,issuedBy:AUTH.upn(),at:new Date().toISOString(),path:meta.path,vendor:meta.vendor,note:meta.note};
+  const rec=Object.assign({},meta,{code,issuedBy:AUTH.upn(),at:new Date().toISOString()});
   J.next=n+1;J.issued.push(rec);
   const p=await gfetch(base+'/content',{method:'PUT',headers:{'If-Match':etag,'Content-Type':'application/json'},body:JSON.stringify(J,null,1)});
   if(p.ok)return {rec,seq:n,attempts:a};
@@ -105,17 +105,25 @@ function preview(){const c=co(),b=bu(),p=prj();const vn=$('s-vn').value;$('previ
 fill($('s-sp'),SPEND);$('s-sp').onchange=()=>{unUpdate();preview()};
 ['s-co','s-bu','s-prj','s-it'].forEach(i=>$(i).onchange=cascade);$('m-list').onchange=renderManage;
 async function generate(){const c=co(),b=bu(),p=prj();if(!c||!b||!p||!c.active||!b.active||!p.active)return alert('Pick an active company, unit and project');
- const it=$('s-it').value,vc=$('s-vn').value,vo=VEND.find(x=>x.code==vc);if(!vo||vo.active===false)return alert('Pick a vendor');const vn=vo.name;const un=unOn()?$('s-un').value:'',uno=UNITS.find(x=>x.code==un);
- const pre=[c.code,b.code,p.code,$('s-sp').value,vc].join('-'),path=[c.name,b.name,p.name,(SPEND.find(x=>x.code==$('s-sp').value)||{}).name].join(' › ')+(uno?' › Unit: '+unLabel(uno):'')+(it?' › '+it+' '+((prj().items.find(x=>x.code==it)||{}).name||''):'');let code,seq,by=null,at=new Date().toISOString();
- if(shared()){$('gen').disabled=true;try{const o=await sharedIssue(n=>pre+'-'+String(n).padStart(5,'0'),{path,vendor:vn,note:$('note').value});code=o.rec.code;seq=o.seq;by=o.rec.issuedBy;at=o.rec.at}catch(e){alert(e.message);return}finally{$('gen').disabled=false}}
+ const it=$('s-it').value,vc=$('s-vn').value,vo=VEND.find(x=>x.code==vc);if(!vo||vo.active===false)return alert('Pick a vendor');const vn=vo.name;const itn=it?((prj().items.find(x=>x.code==it)||{}).name||it):null;const un=unOn()?$('s-un').value:'',uno=UNITS.find(x=>x.code==un);const snap={unitType:uno?uno.type:null,unitNumber:uno?uno.unit:null,unitVin:uno&&uno.vin?uno.vin:null,itemOptional:itn,itemCode:it||null,spendType:(SPEND.find(x=>x.code==$('s-sp').value)||{}).name};
+ const pre=[c.code,b.code,p.code,$('s-sp').value,vc].join('-'),path=[c.name,b.name,p.name,(SPEND.find(x=>x.code==$('s-sp').value)||{}).name].join(' › ');let code,seq,by=null,at=new Date().toISOString();
+ if(shared()){$('gen').disabled=true;try{const o=await sharedIssue(n=>pre+'-'+String(n).padStart(5,'0'),Object.assign({path,vendor:vn,note:$('note').value},snap));code=o.rec.code;seq=o.seq;by=o.rec.issuedBy;at=o.rec.at}catch(e){alert(e.message);return}finally{$('gen').disabled=false}}
  else{seq=D.nextSeq++;code=pre+'-'+seqStr(seq);if(D.issued.some(r=>r.code==code))throw Error('dup')}
- D.issued.push({code,seq,co:c.code,bu:b.code,prj:p.code,spend:$('s-sp').value,item:it||null,unit:un||null,unitType:uno?uno.type:null,unitNo:uno?uno.unit:null,vendor:vn,vendorCode:vc,note:$('note').value,issuedAt:at,issuedBy:by,shared:shared()});save();$('code').textContent=code;renderLog();preview();return code}
+ D.issued.push({code,seq,co:c.code,bu:b.code,prj:p.code,spend:$('s-sp').value,item:it||null,unit:un||null,...snap,vendor:vn,vendorCode:vc,note:$('note').value,issuedAt:at,issuedBy:by,shared:shared()});save();$('code').textContent=code;renderLog();preview();return code}
 $('gen').onclick=generate;$('copy').onclick=()=>navigator.clipboard&&navigator.clipboard.writeText($('code').textContent);
-function decode(code){code=code.trim().toUpperCase();const r=D.issued.find(x=>x.code==code);const m=code.match(/^([A-Z0-9]{2,3})-([A-Z0-9]{3})-([A-Z0-9]{3})-([A-Z0-9])-([A-Z0-9]{2})-(\d{5}|L\d{4})$/);if(!m)return'Not a valid PO code format.';
- const c=D.companies.find(x=>x.code==m[1]),b=c?.bus.find(x=>x.code==m[2]),p=b?.projects.find(x=>x.code==m[3]),it=r?.item&&p?.items.find(x=>x.code==r.item);
- const t=x=>x?x.name+(x.active===false?' (retired)':''):'unknown';
- return `${t(c)} › ${t(b)} › ${t(p)} › ${t(SPEND.find(s=>s.code==m[4]))}${it?' › '+t(it):''}${r?.unit?(u=>' › Unit: '+(u?unLabel(u)+(u.active===false?' (retired)':''):r.unitType+' '+r.unitNo))(UNITS.find(v=>v.code==r.unit)):''} · vendor ${t(VEND.find(v=>v.code==m[5]))}<br>`+(r?`Issued ${new Date(r.issuedAt).toLocaleString()} · vendor ${r.vendor}${r.note?' · '+r.note:''}`:'<b>Not found in this device\'s log.</b>')}
-$('dec').onclick=()=>$('dec-out').innerHTML=decode($('dec-in').value);
+async function findRecord(code){code=code.trim().toUpperCase();
+ if(shared()){try{const x=await gfetch(`${GRAPH}/drives/${cfg.drive}/items/${cfg.item}/content`);if(x.ok){const J=await x.json();const h=(J.issued||[]).find(y=>y.code==code);if(h)return Object.assign({source:'shared counter'},h)}}catch(e){}}
+ const l=D.issued.find(y=>y.code==code);return l?Object.assign({source:'this device log'},l):null}
+function decode(code,r){code=code.trim().toUpperCase();if(r===undefined)r=D.issued.find(x=>x.code==code)||null;const m=code.match(/^([A-Z0-9]{2,3})-([A-Z0-9]{3})-([A-Z0-9]{3})-([A-Z0-9])-([A-Z0-9]{2})-(\d{5}|L\d{4})$/);if(!m)return'Not a valid PO code format.';
+ const t=x=>x?x.name+(x.active===false?' (retired)':''):'unknown',esc=v=>String(v??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+ const c=D.companies.find(x=>x.code==m[1]),b=c?.bus.find(x=>x.code==m[2]),p=b?.projects.find(x=>x.code==m[3]);
+ if(r){const ut=r.unitType,un=r.unitNumber??r.unitNo,uv=r.unitVin;const ul=un?(()=>{const u=UNITS.find(v=>v.code==r.unit);return u?u:{type:ut,unit:un,vin:uv}})():null;
+  const itemNote=r.itemOptional||(r.item?((p?.items||[]).find(x=>x.code==r.item)||{}).name||r.item:null);
+  return `<b>${esc(code)}</b><br>${r.path?esc(r.path):`${t(c)} › ${t(b)} › ${t(p)} › ${t(SPEND.find(s=>s.code==m[4]))}`}`+
+  (un?`<br><b>Unit:</b> ${esc(ut)} ${esc(un)}${uv?' · VIN '+esc(uv):''}`:'')+(itemNote?`<br><b>Item optional:</b> ${esc(itemNote)}`:'')+
+  `<br>Vendor: ${esc(r.vendor)}${r.note?' · Note: '+esc(r.note):''}<br>Issued ${new Date(r.at||r.issuedAt).toLocaleString()}${r.issuedBy?' by '+esc(r.issuedBy):''} · from ${esc(r.source||'this device log')}`}
+ const it=null;return `${t(c)} › ${t(b)} › ${t(p)} › ${t(SPEND.find(s=>s.code==m[4]))} · vendor ${t(VEND.find(v=>v.code==m[5]))}<br><b>No issued record found${shared()?' in the shared counter or':' in'} this device's log</b> (decoded from dropdown lists only).`}
+$('dec').onclick=async()=>{$('dec-out').textContent='Looking up…';const r=await findRecord($('dec-in').value);$('dec-out').innerHTML=decode($('dec-in').value,r)};
 function renderLog(){$('log').innerHTML='<tr><th>PO</th><th>Item</th><th>Vendor</th><th>Date</th></tr>'+D.issued.slice().reverse().map(r=>`<tr><td class="mono">${r.code}</td><td>${r.item||''}</td><td>${r.vendor}</td><td>${r.issuedAt.slice(0,10)}</td></tr>`).join('')}
 function curList(){const l=$('m-list').value;return l=='un'?UNITS:l=='vn'?VEND:l=='sp'?SPEND:l=='bu'?co().bus:l=='prj'?bu().projects:prj()?.items||[]}
 function renderManage(){$('m-rows').innerHTML=curList().map((x,i)=>`<div class="row" style="align-items:center;margin-top:6px"><span class="${x.active===false?'ret':''}">${x.code} · ${x.name}</span><button class="${x.active===false?'sec':'del'}" data-i="${i}" style="flex:0 0 auto">${x.active===false?'Restore':'Retire'}</button></div>`).join('');

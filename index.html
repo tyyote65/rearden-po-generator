@@ -26,7 +26,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}td,th{border-bottom:1px
 <label>Business unit</label><select id="s-bu"></select>
 <label>Project</label><div class="row"><select id="s-prj"></select><button class="sec" id="add-prj" style="flex:0 0 auto;margin:0">+ Add project</button></div>
 <label>Spend type</label><div class="row"><select id="s-sp"></select><button class="sec" id="add-sp" style="flex:0 0 auto;margin:0">+ Add category</button></div>
-<label>Project tool / item (optional)</label><select id="s-it"></select>
+<label>Project tool / item (optional)</label><div class="row"><select id="s-it"></select><button class="sec" id="add-it" style="flex:0 0 auto;margin:0">+ Add tool/item</button></div>
 <label>Vendor</label><select id="s-vn"></select>
 <label>Requested by / note</label><input id="note" placeholder="Name, what it's for">
 <div class="note" style="margin-top:10px">Next code preview: <b class="mono" id="preview">—</b></div><button id="gen">Generate PO</button>
@@ -103,7 +103,7 @@ fill($('s-sp'),SPEND);$('s-sp').onchange=preview;
 ['s-co','s-bu','s-prj','s-it'].forEach(i=>$(i).onchange=cascade);$('m-list').onchange=renderManage;
 async function generate(){const c=co(),b=bu(),p=prj();if(!c||!b||!p||!c.active||!b.active||!p.active)return alert('Pick an active company, unit and project');
  const it=$('s-it').value,vc=$('s-vn').value,vo=VEND.find(x=>x.code==vc);if(!vo||vo.active===false)return alert('Pick a vendor');const vn=vo.name;
- const pre=[c.code,b.code,p.code,$('s-sp').value,vc].join('-'),path=[c.name,b.name,p.name,(SPEND.find(x=>x.code==$('s-sp').value)||{}).name].join(' › ')+(it?' › '+it:'');let code,seq,by=null,at=new Date().toISOString();
+ const pre=[c.code,b.code,p.code,$('s-sp').value,vc].join('-'),path=[c.name,b.name,p.name,(SPEND.find(x=>x.code==$('s-sp').value)||{}).name].join(' › ')+(it?' › '+it+' '+((prj().items.find(x=>x.code==it)||{}).name||''):'');let code,seq,by=null,at=new Date().toISOString();
  if(shared()){$('gen').disabled=true;try{const o=await sharedIssue(n=>pre+'-'+String(n).padStart(5,'0'),{path,vendor:vn,note:$('note').value});code=o.rec.code;seq=o.seq;by=o.rec.issuedBy;at=o.rec.at}catch(e){alert(e.message);return}finally{$('gen').disabled=false}}
  else{seq=D.nextSeq++;code=pre+'-'+seqStr(seq);if(D.issued.some(r=>r.code==code))throw Error('dup')}
  D.issued.push({code,seq,co:c.code,bu:b.code,prj:p.code,spend:$('s-sp').value,item:it||null,vendor:vn,vendorCode:vc,note:$('note').value,issuedAt:at,issuedBy:by,shared:shared()});save();$('code').textContent=code;renderLog();preview();return code}
@@ -124,13 +124,14 @@ function dl(n,t,ty){const a=document.createElement('a');a.href=URL.createObjectU
 $('exj').onclick=()=>dl('rearden-po-log.json',JSON.stringify(D,null,1),'application/json');
 $('exc').onclick=()=>dl('rearden-po-log.csv','code,company,bu,project,spend,item,vendor,note,issuedAt\n'+D.issued.map(r=>[r.code,r.co,r.bu,r.prj,r.spend,r.item||'',r.vendor,r.note,r.issuedAt].map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n'),'text/csv');
 $('imp').onchange=e=>e.target.files[0].text().then(t=>{const I=JSON.parse(t);I.issued.forEach(r=>{if(!D.issued.some(x=>x.code==r.code))D.issued.push(r)});D.nextSeq=Math.max(D.nextSeq,I.nextSeq||0,...D.issued.map(r=>r.seq+1));save();renderLog()});
-function addEntry(list,len,label){const b=bu();if(list=='prj'&&!b)return;const L=list=='vn'?VEND:list=='sp'?SPEND:b.projects;
- const name=prompt('New '+label+' name'+(list=='prj'?' (under '+b.name+')':''));if(!name||!name.trim())return;
- let code;if(list=='prj'){let n=1;while(L.some(x=>x.code=='P'+String(n).padStart(2,'0')))n++;code='P'+String(n).padStart(2,'0')}
+function addEntry(list,len,label){const b=bu();if(list=='prj'&&!b)return;const L=list=='vn'?VEND:list=='sp'?SPEND:list=='it'?(prj()?prj().items:null):b.projects;if(!L)return;
+ const name=prompt('New '+label+' name'+(list=='prj'?' (under '+b.name+')':list=='it'?' (for '+prj().name+')':''));if(!name||!name.trim())return;
+ let code;if(list=='prj'||list=='it'){const P=list=='prj'?'P':'T';let n=1;while(L.some(x=>x.code==P+String(n).padStart(2,'0')))n++;code=P+String(n).padStart(2,'0')}
  else{code=(prompt(len+'-character code (letters/digits, unused)')||'').trim().toUpperCase();if(!new RegExp('^[A-Z0-9]{'+len+'}$').test(code))return alert('Must be exactly '+len+' letters/digits');}
  if(L.some(x=>x.code==code))return alert('Code '+code+' already used (retired codes are never reused)');
- L.push(list=='prj'?{code,name:name.trim(),active:true,items:[]}:{code,name:name.trim(),active:true});save();cascade();$({prj:'s-prj',sp:'s-sp',vn:'s-vn'}[list]).value=code;cascade();}
+ L.push(list=='prj'?{code,name:name.trim(),active:true,items:[]}:list=='it'?{code,name:name.trim(),active:true,oneTime:confirm('Is this a one-time purchase? OK = one-time, Cancel = not')}:{code,name:name.trim(),active:true});save();cascade();$({prj:'s-prj',sp:'s-sp',vn:'s-vn',it:'s-it'}[list]).value=code;cascade();}
 $('s-vn').onchange=()=>{if($('s-vn').value=='__add'){$('s-vn').selectedIndex=0;addEntry('vn',2,'vendor')}preview()};
+$('add-it').onclick=()=>addEntry('it',3,'project tool/item');
 $('add-prj').onclick=()=>addEntry('prj',3,'project');$('add-sp').onclick=()=>addEntry('sp',1,'spend category');
 $("signin").onclick=()=>!msal?alert("Sign-in library did not load; check connection and reload."):msal.loginRedirect({scopes:SCOPES});$('signout').onclick=()=>msal&&msal.logoutRedirect({account});
 $('cfg-save').onclick=()=>{cfg.drive=$('cfg-drive').value.trim();cfg.item=$('cfg-item').value.trim();localStorage.setItem('po-drive',cfg.drive);localStorage.setItem('po-item',cfg.item);renderAuth()};

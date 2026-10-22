@@ -42,7 +42,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}td,th{border-bottom:1px
 <button id="m-add">Add</button><div id="m-rows"></div></div>
 <p class="note">Code: CO-BU-PRJ-S-VV-NNNNN (21 chars; QuickBooks Online PO number limit is 21). VV = 2-character vendor code. S: one-character spend category (C consumable/recurring, O one-time, R replacement, D R&amp;D, plus any added; new categories must use a single unused letter/digit so the code length never changes). NNNNN is a global sequence (up to 99,999), never reused. Tool/item lives in the log record, not the code. Future: supervisor-only generation and OneDrive-based permissions; each record carries an issuedBy field for that.</p>
 </main>
-<script src="https://alcdn.msauth.net/browser/2.38.3/js/msal-browser.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@2.38.3/lib/msal-browser.min.js"></script>
 <script>
 /* ===== CONFIG: fill these from the Entra app registration (SPA platform). No secrets belong here. ===== */
 const CLIENT_ID='428c770e-a13c-4b60-a9af-5c728c8fda61';
@@ -132,7 +132,7 @@ function addEntry(list,len,label){const b=bu();if(list=='prj'&&!b)return;const L
  L.push(list=='prj'?{code,name:name.trim(),active:true,items:[]}:{code,name:name.trim(),active:true});save();cascade();$({prj:'s-prj',sp:'s-sp',vn:'s-vn'}[list]).value=code;cascade();}
 $('s-vn').onchange=()=>{if($('s-vn').value=='__add'){$('s-vn').selectedIndex=0;addEntry('vn',2,'vendor')}preview()};
 $('add-prj').onclick=()=>addEntry('prj',3,'project');$('add-sp').onclick=()=>addEntry('sp',1,'spend category');
-$('signin').onclick=()=>msal&&msal.loginRedirect({scopes:SCOPES});$('signout').onclick=()=>msal&&msal.logoutRedirect({account});
+$("signin").onclick=()=>!msal?alert("Sign-in library did not load; check connection and reload."):msal.loginRedirect({scopes:SCOPES});$('signout').onclick=()=>msal&&msal.logoutRedirect({account});
 $('cfg-save').onclick=()=>{cfg.drive=$('cfg-drive').value.trim();cfg.item=$('cfg-item').value.trim();localStorage.setItem('po-drive',cfg.drive);localStorage.setItem('po-item',cfg.item);renderAuth()};
 $('cfg-resolve').onclick=async()=>{if(!account)return alert('Sign in first');const r=await gfetch(GRAPH+'/me/drive/root:/'+COUNTER_PATH.split('/').map(encodeURIComponent).join('/')+'?$select=id,parentReference');if(!r.ok)return alert('Not found ('+r.status+')');const j=await r.json();$('cfg-drive').value=j.parentReference.driveId;$('cfg-item').value=j.id;$('cfg-save').onclick()};
 cascade();renderLog();initAuth();

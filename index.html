@@ -11,8 +11,10 @@ button{min-height:52px;font-size:17px;border:0;border-radius:10px;padding:0 16px
 #code{font-family:Menlo,monospace;font-size:clamp(18px,6vw,26px);white-space:nowrap;padding:14px;background:var(--charcoal);color:var(--gold);border-radius:10px;text-align:center;margin-top:10px;min-height:60px}
 table{width:100%;border-collapse:collapse;font-size:13px}td,th{border-bottom:1px solid var(--line);padding:6px 4px;text-align:left;vertical-align:top}.mono{font-family:Menlo,monospace}.ret{color:var(--steel-soft);text-decoration:line-through}.note{font-size:12px;color:var(--steel)}
 .row{display:flex;gap:6px}.row>*{flex:1}
+#log tr.po{cursor:pointer}#log tr.po:hover{background:var(--panel)}#log tr.void td{color:var(--steel-soft);text-decoration:line-through}.vtag{display:inline-block;background:var(--red);color:#fff;font-size:11px;font-weight:bold;padding:1px 5px;border-radius:4px;text-decoration:none!important}
+#pod{position:fixed;inset:0;background:#0008;display:none;align-items:flex-start;justify-content:center;padding:20px 10px;overflow:auto;z-index:9}#pod .card{max-width:620px;width:100%;margin:0}#pod dl{display:grid;grid-template-columns:auto 1fr;gap:4px 10px;font-size:14px;margin:8px 0}#pod dt{color:var(--steel)}#pod dd{margin:0;word-break:break-word}
 </style></head><body>
-<header><h1>Rearden PO Generator</h1><p>PROTOTYPE · sample projects are placeholders</p></header>
+<header><h1>Rearden PO Generator</h1><p>PROTOTYPE · sample projects are placeholders · <span id="ver">v1.1</span></p></header>
 <div id="mode" style="padding:10px 16px;font-weight:bold;color:#fff;background:var(--red)">LOCAL — not shared</div>
 <main>
 <div class="card"><h2>Shared counter (Microsoft sign-in)</h2>
@@ -36,14 +38,14 @@ table{width:100%;border-collapse:collapse;font-size:13px}td,th{border-bottom:1px
 <div id="code">—</div><button class="sec" id="copy">Copy code</button>
 </div>
 <div class="card"><h2>Decode a PO</h2><input id="dec-in" placeholder="RR-MON-P01-O-AM-00001" autocapitalize="characters"><button class="sec" id="dec">Decode</button><div id="dec-out" class="note"></div></div>
-<div class="card"><h2>Issued PO log</h2><div style="overflow-x:auto"><table id="log"></table></div>
+<div class="card"><h2>Issued PO log</h2><input id="log-q" placeholder="Search PO, item, vendor, note, status…" style="min-height:44px;margin-bottom:8px"><p class="note" style="margin:0 0 6px">Tap a PO for full details or to void it.</p><div style="overflow-x:auto"><table id="log"></table></div>
 <button class="sec" id="exj">Export JSON</button><button class="sec" id="exc">Export CSV</button><label>Import JSON (merges, never reuses numbers)</label><input type="file" id="imp" accept=".json"></div>
 <div class="card"><h2>Manage dropdowns</h2><p class="note">Retire = soft delete: the entry stops generating new POs, but old codes still decode. Nothing is ever hard-deleted.</p>
 <label>List</label><select id="m-list"><option value="bu">Business units</option><option value="prj">Projects (in selected BU)</option><option value="it">Item optional (in selected project)</option><option value="sp">Spend categories</option><option value="vn">Vendors</option><option value="un">Units (vehicles / trailers)</option></select>
 <div class="row"><input id="m-code" placeholder="Code e.g. P04" maxlength="3"><input id="m-name" placeholder="Name"></div>
 <label class="note"><input type="checkbox" id="m-ot" style="width:auto;min-height:auto"> item is one-time</label>
 <button id="m-add">Add</button><div id="m-rows"></div></div>
-<p class="note">Code: CO-BU-PRJ-S-VV-NNNNN (21 chars; QuickBooks Online PO number limit is 21). VV = 2-character vendor code. S: one-character spend category (C consumable/recurring, O one-time, R replacement, D R&amp;D, plus any added; new categories must use a single unused letter/digit so the code length never changes). NNNNN is a global sequence (up to 99,999), never reused. Tool/item lives in the log record, not the code. Future: supervisor-only generation and OneDrive-based permissions; each record carries an issuedBy field for that.</p>
+<p class="note">Code: CO-BU-PRJ-S-VV-NNNNN (21 chars; QuickBooks Online PO number limit is 21). VV = 2-character vendor code. S: one-character spend category (C consumable/recurring, O one-time, R replacement, D R&D, plus any added; new categories must use a single unused letter/digit so the code length never changes). NNNNN is a global sequence (up to 99,999), never reused. Tool/item lives in the log record, not the code. Future: supervisor-only generation and OneDrive-based permissions; each record carries an issuedBy field for that.</p>
 </main>
 <script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@2.38.3/lib/msal-browser.min.js"></script>
 <script>
@@ -118,7 +120,7 @@ async function findRecord(code){code=code.trim().toUpperCase();
  if(shared()){try{const x=await gfetch(`${GRAPH}/drives/${cfg.drive}/items/${cfg.item}/content`);if(x.ok){const J=await x.json();const h=(J.issued||[]).find(y=>y.code==code);if(h)return Object.assign({source:'shared counter'},h)}}catch(e){}}
  const l=D.issued.find(y=>y.code==code);return l?Object.assign({source:'this device log'},l):null}
 function decode(code,r){code=code.trim().toUpperCase();if(r===undefined)r=D.issued.find(x=>x.code==code)||null;const m=code.match(/^([A-Z0-9]{2,3})-([A-Z0-9]{3})-([A-Z0-9]{3})-([A-Z0-9])-([A-Z0-9]{2})-(\d{5}|L\d{4})$/);if(!m)return'Not a valid PO code format.';
- const t=x=>x?x.name+(x.active===false?' (retired)':''):'unknown',esc=v=>String(v??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+ const t=x=>x?x.name+(x.active===false?' (retired)':''):'unknown',esc=v=>String(v??'').replace(/[&<>"]/g,c=>({'&':'&','<':'<','>':'>','"':'"'}[c]));
  const c=D.companies.find(x=>x.code==m[1]),b=c?.bus.find(x=>x.code==m[2]),p=b?.projects.find(x=>x.code==m[3]);
  if(r){const ut=r.unitType,un=r.unitNumber??r.unitNo,uv=r.unitVin;const ul=un?(()=>{const u=UNITS.find(v=>v.code==r.unit);return u?u:{type:ut,unit:un,vin:uv}})():null;
   const itemNote=r.itemOptional||(r.item?((p?.items||[]).find(x=>x.code==r.item)||{}).name||r.item:null);
@@ -156,4 +158,50 @@ $("signin").onclick=()=>!msal?alert("Sign-in library did not load; check connect
 $('cfg-save').onclick=()=>{cfg.drive=$('cfg-drive').value.trim();cfg.item=$('cfg-item').value.trim();localStorage.setItem('po-drive',cfg.drive);localStorage.setItem('po-item',cfg.item);renderAuth()};
 $('cfg-resolve').onclick=async()=>{if(!account)return alert('Sign in first');const r=await gfetch(GRAPH+'/me/drive/root:/'+COUNTER_PATH.split('/').map(encodeURIComponent).join('/')+'?$select=id,parentReference');if(!r.ok)return alert('Not found ('+r.status+')');const j=await r.json();$('cfg-drive').value=j.parentReference.driveId;$('cfg-item').value=j.id;$('cfg-save').onclick()};
 cascade();renderLog();initAuth();
+</script>
+<div id="pod"><div class="card"><h2>PO details</h2><div id="pod-body"></div>
+<button class="sec" id="pod-copy">Copy code</button><button class="del" id="pod-void">Void this PO</button><button class="sec" id="pod-close">Close</button><div id="pod-msg" class="note"></div></div></div>
+<script>
+(function(){
+const esc=v=>String(v??'').replace(/[&<>"]/g,c=>({'&':'&','<':'<','>':'>','"':'"'}[c]));
+const isVoid=r=>r&&r.status==='void';
+const itemOf=r=>r.itemOptional||r.item||'';
+window.renderLog=function(){const q=($('log-q').value||'').trim().toLowerCase();
+ const rows=D.issued.slice().reverse().filter(r=>!q||[r.code,itemOf(r),r.vendor,r.note,r.voidNote,r.status||'issued'].join(' ').toLowerCase().includes(q));
+ $('log').innerHTML='<tr><th>PO</th><th>Item</th><th>Vendor</th><th>Date</th><th>Status</th><th>Note</th></tr>'+rows.map(r=>`<tr class="po${isVoid(r)?' void':''}" data-code="${esc(r.code)}"><td class="mono">${esc(r.code)}</td><td>${esc(itemOf(r))}</td><td>${esc(r.vendor)}</td><td>${esc(String(r.issuedAt||r.at||'').slice(0,10))}</td><td>${isVoid(r)?'<span class="vtag">VOID</span>':'Issued'}</td><td>${esc(isVoid(r)?(r.voidNote||r.note):r.note)}</td></tr>`).join('')+(rows.length?'':'<tr><td colspan="6" class="note">No matching POs.</td></tr>')};
+$('log-q').oninput=renderLog;
+$('log').onclick=e=>{const tr=e.target.closest('tr.po');if(tr)openPO(tr.dataset.code)};
+let cur=null;
+function segs(code){const m=code.match(/^([A-Z0-9]{2,3})-([A-Z0-9]{3})-([A-Z0-9]{3})-([A-Z0-9])-([A-Z0-9]{2})-(\d{5}|L\d{4})$/);if(!m)return[];
+ const c=D.companies.find(x=>x.code==m[1]),b=c?.bus.find(x=>x.code==m[2]),p=b?.projects.find(x=>x.code==m[3]),n=x=>x?x.name+(x.active===false?' (retired)':''):'unknown';
+ return[['Company',m[1]+' · '+n(c)],['Business unit',m[2]+' · '+n(b)],['Project',m[3]+' · '+n(p)],['Spend',m[4]+' · '+n(SPEND.find(s=>s.code==m[4]))],['Vendor code',m[5]+' · '+n(VEND.find(v=>v.code==m[5]))],['Sequence',m[6]+(m[6][0]=='L'?' (local)':' (shared)')]]}
+async function openPO(code){cur=code;$('pod').style.display='flex';$('pod-msg').textContent='';$('pod-body').innerHTML='Loading…';
+ const local=D.issued.find(x=>x.code==code);let r=null;try{r=await findRecord(code)}catch(e){}r=r||local;
+ if(local&&r!==local&&isVoid(local)&&!isVoid(r))r=Object.assign({},r,{status:local.status,voidedAt:local.voidedAt,voidedBy:local.voidedBy,voidNote:local.voidNote});
+ const F=[['Status',isVoid(r)?'<span class="vtag">VOID</span>':'Issued',1]].concat(segs(code)).concat([['Path',r&&r.path],['Item',r&&itemOf(r)],['Item code',r&&(r.itemCode||r.item)],['Spend type',r&&r.spendType],['Unit',r&&r.unitNumber?[r.unitType,r.unitNumber,r.unitVin?'VIN '+r.unitVin:''].join(' '):''],['Vendor',r&&r.vendor],['Note',r&&r.note],['Issued at',r&&(r.issuedAt||r.at)?new Date(r.issuedAt||r.at).toLocaleString():''],['Issued by',r&&r.issuedBy],['Source',r&&(r.source||'this device log')]]);
+ if(isVoid(r))F.push(['Voided at',new Date(r.voidedAt).toLocaleString()],['Voided by',r.voidedBy||'this device'],['Void reason',r.voidNote]);
+ $('pod-body').innerHTML='<div class="mono" style="font-size:18px;font-weight:bold">'+esc(code)+'</div><dl>'+F.filter(f=>f[1]).map(f=>`<dt>${f[0]}</dt><dd>${f[2]?f[1]:esc(f[1])}</dd>`).join('')+'</dl>';
+ $('pod-void').style.display=(local&&!isVoid(local))?'':'none'}
+window.openPO=openPO;
+const close=()=>{$('pod').style.display='none';cur=null};
+$('pod-close').onclick=close;$('pod').onclick=e=>{if(e.target.id=='pod')close()};
+$('pod-copy').onclick=()=>{navigator.clipboard&&navigator.clipboard.writeText(cur).catch(()=>{});$('pod-msg').textContent='Copied '+cur};
+async function sharedVoid(code,v,tries=5){const base=`${GRAPH}/drives/${cfg.drive}/items/${cfg.item}`;
+ for(let a=0;a<tries;a++){const m=await gfetch(base+'?$select=id,eTag');if(!m.ok)throw Error('Counter metadata '+m.status);const etag=(await m.json()).eTag;
+  const c=await gfetch(base+'/content');if(!c.ok)throw Error('Counter read '+c.status);const J=await c.json();J.issued=J.issued||[];
+  const h=J.issued.find(y=>y.code==code);if(!h)return 'not in shared counter';Object.assign(h,v);
+  const p=await gfetch(base+'/content',{method:'PUT',headers:{'If-Match':etag,'Content-Type':'application/json'},body:JSON.stringify(J,null,1)});
+  if(p.ok)return 'shared counter updated';if(p.status!=412)throw Error('Counter write '+p.status);await sleep(Math.random()*150*2**a)}
+ throw Error('Counter busy; shared copy not updated')}
+$('pod-void').onclick=async()=>{const code=cur,r=D.issued.find(x=>x.code==code);if(!r||isVoid(r))return;
+ const why=prompt('Reason for voiding '+code+'?\n(The number is kept and never reused.)','');if(why===null)return;if(!why.trim())return alert('A reason is required.');
+ if(!confirm('Void '+code+'?\nReason: '+why.trim()))return;
+ const v={status:'void',voidedAt:new Date().toISOString(),voidedBy:AUTH.upn()||null,voidNote:why.trim()};
+ Object.assign(r,v);save();renderLog();let msg='Voided on this device.';
+ if(shared()){try{msg+=' '+await sharedVoid(code,v)+'.'}catch(e){msg+=' Shared copy NOT updated: '+e.message}}
+ await openPO(code);$('pod-msg').textContent=msg};
+$('exc').onclick=()=>dl('rearden-po-log.csv','code,company,bu,project,spend,item,vendor,note,issuedAt,issuedBy,status,voidedAt,voidedBy,voidNote\n'+D.issued.map(r=>[r.code,r.co,r.bu,r.prj,r.spend,itemOf(r),r.vendor,r.note,r.issuedAt,r.issuedBy,r.status||'issued',r.voidedAt,r.voidedBy,r.voidNote].map(v=>'"'+String(v??'').replace(/"/g,'""')+'"').join(',')).join('\n'),'text/csv');
+$('imp').onchange=e=>e.target.files[0].text().then(t=>{const I=JSON.parse(t);(I.issued||[]).forEach(r=>{const x=D.issued.find(y=>y.code==r.code);if(!x)D.issued.push(r);else if(r.status==='void'&&x.status!=='void')Object.assign(x,{status:'void',voidedAt:r.voidedAt,voidedBy:r.voidedBy,voidNote:r.voidNote})});D.nextSeq=Math.max(D.nextSeq,I.nextSeq||0,...D.issued.map(r=>(r.seq||0)+1));save();renderLog()});
+renderLog();
+})();
 </script></body></html>

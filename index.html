@@ -120,7 +120,7 @@ async function findRecord(code){code=code.trim().toUpperCase();
  if(shared()){try{const x=await gfetch(`${GRAPH}/drives/${cfg.drive}/items/${cfg.item}/content`);if(x.ok){const J=await x.json();const h=(J.issued||[]).find(y=>y.code==code);if(h)return Object.assign({source:'shared counter'},h)}}catch(e){}}
  const l=D.issued.find(y=>y.code==code);return l?Object.assign({source:'this device log'},l):null}
 function decode(code,r){code=code.trim().toUpperCase();if(r===undefined)r=D.issued.find(x=>x.code==code)||null;const m=code.match(/^([A-Z0-9]{2,3})-([A-Z0-9]{3})-([A-Z0-9]{3})-([A-Z0-9])-([A-Z0-9]{2})-(\d{5}|L\d{4})$/);if(!m)return'Not a valid PO code format.';
- const t=x=>x?x.name+(x.active===false?' (retired)':''):'unknown',esc=v=>String(v??'').replace(/[&<>"]/g,c=>({'&':'&','<':'<','>':'>','"':'"'}[c]));
+ const t=x=>x?x.name+(x.active===false?' (retired)':''):'unknown',esc=v=>String(v??'').replace(/[&<>"]/g,c=>({'&':'\x26amp;','<':'\x26lt;','>':'\x26gt;','"':'\x26quot;'}[c]));
  const c=D.companies.find(x=>x.code==m[1]),b=c?.bus.find(x=>x.code==m[2]),p=b?.projects.find(x=>x.code==m[3]);
  if(r){const ut=r.unitType,un=r.unitNumber??r.unitNo,uv=r.unitVin;const ul=un?(()=>{const u=UNITS.find(v=>v.code==r.unit);return u?u:{type:ut,unit:un,vin:uv}})():null;
   const itemNote=r.itemOptional||(r.item?((p?.items||[]).find(x=>x.code==r.item)||{}).name||r.item:null);
@@ -163,7 +163,7 @@ cascade();renderLog();initAuth();
 <button class="sec" id="pod-copy">Copy code</button><button class="del" id="pod-void">Void this PO</button><button class="sec" id="pod-close">Close</button><div id="pod-msg" class="note"></div></div></div>
 <script>
 (function(){
-const esc=v=>String(v??'').replace(/[&<>"]/g,c=>({'&':'&','<':'<','>':'>','"':'"'}[c]));
+const esc=v=>String(v??'').replace(/[&<>"]/g,c=>({'&':'\x26amp;','<':'\x26lt;','>':'\x26gt;','"':'\x26quot;'}[c]));
 const isVoid=r=>r&&r.status==='void';
 const itemOf=r=>r.itemOptional||r.item||'';
 window.renderLog=function(){const q=($('log-q').value||'').trim().toLowerCase();

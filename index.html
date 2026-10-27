@@ -14,7 +14,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}td,th{border-bottom:1px
 #log tr.po{cursor:pointer}#log tr.po:hover{background:var(--panel)}#log tr.void td{color:var(--steel-soft);text-decoration:line-through}.vtag{display:inline-block;background:var(--red);color:#fff;font-size:11px;font-weight:bold;padding:1px 5px;border-radius:4px;text-decoration:none!important}
 #pod{position:fixed;inset:0;background:#0008;display:none;align-items:flex-start;justify-content:center;padding:20px 10px;overflow:auto;z-index:9}#pod .card{max-width:620px;width:100%;margin:0}#pod dl{display:grid;grid-template-columns:auto 1fr;gap:4px 10px;font-size:14px;margin:8px 0}#pod dt{color:var(--steel)}#pod dd{margin:0;word-break:break-word}
 </style></head><body>
-<header><h1>Rearden PO Generator</h1><p>PROTOTYPE · sample projects are placeholders · <span id="ver">v1.1</span></p></header>
+<header><h1>Rearden PO Generator</h1><p>PROTOTYPE · sample projects are placeholders · <span id="ver">v1.2</span></p></header>
 <div id="mode" style="padding:10px 16px;font-weight:bold;color:#fff;background:var(--red)">LOCAL — not shared</div>
 <main>
 <div class="card"><h2>Shared counter (Microsoft sign-in)</h2>
@@ -38,7 +38,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}td,th{border-bottom:1px
 <div id="code">—</div><button class="sec" id="copy">Copy code</button>
 </div>
 <div class="card"><h2>Decode a PO</h2><input id="dec-in" placeholder="RR-MON-P01-O-AM-00001" autocapitalize="characters"><button class="sec" id="dec">Decode</button><div id="dec-out" class="note"></div></div>
-<div class="card"><h2>Issued PO log</h2><input id="log-q" placeholder="Search PO, item, vendor, note, status…" style="min-height:44px;margin-bottom:8px"><p class="note" style="margin:0 0 6px">Tap a PO for full details or to void it.</p><div style="overflow-x:auto"><table id="log"></table></div>
+<div class="card"><h2>Issued PO log</h2><input id="log-q" placeholder="Search PO, item, vendor, note, status…" style="min-height:44px;margin-bottom:8px"><p class="note" style="margin:0 0 6px">Tap a PO for full details or to void it.</p><div id="log-src" class="note" style="font-weight:bold;margin:0 0 6px">Local only (this device)</div><div style="overflow-x:auto"><table id="log"></table></div>
 <button class="sec" id="exj">Export JSON</button><button class="sec" id="exc">Export CSV</button><label>Import JSON (merges, never reuses numbers)</label><input type="file" id="imp" accept=".json"></div>
 <div class="card"><h2>Manage dropdowns</h2><p class="note">Retire = soft delete: the entry stops generating new POs, but old codes still decode. Nothing is ever hard-deleted.</p>
 <label>List</label><select id="m-list"><option value="bu">Business units</option><option value="prj">Projects (in selected BU)</option><option value="it">Item optional (in selected project)</option><option value="sp">Spend categories</option><option value="vn">Vendors</option><option value="un">Units (vehicles / trailers)</option></select>
@@ -86,7 +86,7 @@ function renderAuth(){const st=$('auth-state'),md=$('mode');
  md.textContent=shared()?'SHARED counter · signed in as '+account.username:'LOCAL — not shared (codes end in L####)';md.style.background=shared()?'#2e7d32':'var(--red)';
  $('cfg-drive').value=cfg.drive;$('cfg-item').value=cfg.item;if(typeof preview=='function')preview()}
 async function initAuth(){try{if(authConfigured()&&window.msal){msal=new window.msal.PublicClientApplication({auth:{clientId:CLIENT_ID,authority:'https://login.microsoftonline.com/'+TENANT_ID,redirectUri:location.origin+location.pathname},cache:{cacheLocation:'localStorage'}});
- const r=await msal.handleRedirectPromise();account=r?.account||msal.getAllAccounts()[0]||null}}catch(e){$('auth-state').textContent='Sign-in error: '+e.message}renderAuth()}
+ const r=await msal.handleRedirectPromise();account=r?.account||msal.getAllAccounts()[0]||null}}catch(e){$('auth-state').textContent='Sign-in error: '+e.message}renderAuth();if(window.syncLog)window.syncLog()}
 
 const KEY='rearden-po-v1';
 const SPEND0=[{code:'C',name:'Consumable / recurring',active:true},{code:'O',name:'One-time (e.g. lab equipment)',active:true},{code:'R',name:'Replacement for broken item',active:true},{code:'D',name:'R&D',active:true}];
@@ -203,5 +203,50 @@ $('pod-void').onclick=async()=>{const code=cur,r=D.issued.find(x=>x.code==code);
 $('exc').onclick=()=>dl('rearden-po-log.csv','code,company,bu,project,spend,item,vendor,note,issuedAt,issuedBy,status,voidedAt,voidedBy,voidNote\n'+D.issued.map(r=>[r.code,r.co,r.bu,r.prj,r.spend,itemOf(r),r.vendor,r.note,r.issuedAt,r.issuedBy,r.status||'issued',r.voidedAt,r.voidedBy,r.voidNote].map(v=>'"'+String(v??'').replace(/"/g,'""')+'"').join(',')).join('\n'),'text/csv');
 $('imp').onchange=e=>e.target.files[0].text().then(t=>{const I=JSON.parse(t);(I.issued||[]).forEach(r=>{const x=D.issued.find(y=>y.code==r.code);if(!x)D.issued.push(r);else if(r.status==='void'&&x.status!=='void')Object.assign(x,{status:'void',voidedAt:r.voidedAt,voidedBy:r.voidedBy,voidNote:r.voidNote})});D.nextSeq=Math.max(D.nextSeq,I.nextSeq||0,...D.issued.map(r=>(r.seq||0)+1));save();renderLog()});
 renderLog();
+})();
+</script>
+<script>
+/*POSYNC-BEGIN pure merge logic (unit-tested in tests/sync.test.js) */
+const POSYNC=(function(){
+const RX=/^([A-Z0-9]{2,3})-([A-Z0-9]{3})-([A-Z0-9]{3})-([A-Z0-9])-([A-Z0-9]{2})-(\d{5}|L\d{4})$/;
+const isShared=c=>/-\d{5}$/.test(c||'');
+const VF=['status','voidedAt','voidedBy','voidNote'];
+// shared-file record -> local log record (keeps every field, fills the ones the table needs)
+function toLocal(s){const m=String(s.code).match(RX)||[];return Object.assign({co:m[1],bu:m[2],prj:m[3],spend:m[4],vendorCode:m[5],seq:m[6]?+m[6]:undefined,item:s.itemCode||null},s,{issuedAt:s.issuedAt||s.at,shared:true})}
+// local log record -> shared-file record
+function toShared(r){const o=Object.assign({},r);o.at=r.at||r.issuedAt;delete o.shared;delete o.source;return o}
+function voidOf(a,b){const v=[a,b].filter(x=>x&&x.status==='void').sort((x,y)=>String(x.voidedAt||'').localeCompare(String(y.voidedAt||'')));return v[0]||null}
+// Pull: merge shared POs into the local list. Never deletes. Void is final; otherwise shared wins.
+function mergeShared(local,shared){let changed=0;(shared||[]).forEach(s=>{if(!s||!s.code)return;const x=local.find(y=>y.code==s.code);
+ if(!x){local.push(toLocal(s));changed++;return}
+ const before=JSON.stringify(x),v=voidOf(x,s);Object.assign(x,toLocal(s));
+ if(v)VF.forEach(k=>x[k]=v[k]);else VF.forEach(k=>delete x[k]);if(JSON.stringify(x)!=before)changed++});
+ return changed}
+// Push: add local-only shared-format POs and local voids to the shared JSON. Returns true if J changed. Never touches L#### codes, never renumbers.
+function pushLocal(J,local){J.issued=J.issued||[];let ch=false;local.forEach(r=>{if(!isShared(r.code))return;const h=J.issued.find(y=>y.code==r.code);
+ if(!h){J.issued.push(toShared(r));ch=true}
+ else if(r.status==='void'&&h.status!=='void'){VF.forEach(k=>h[k]=r[k]);ch=true}});
+ const mx=Math.max(0,...J.issued.filter(y=>isShared(y.code)).map(y=>+y.code.slice(-5)));if(ch||(J.next||1)<=mx){if((J.next||1)<=mx){J.next=mx+1;ch=true}}return ch}
+// Safe write with eTag/If-Match and backoff. io={meta()->etag, read()->J, write(J,etag)->status}
+async function sharedUpdate(io,mut,tries=5,sleep=ms=>new Promise(r=>setTimeout(r,ms))){for(let a=1;a<=tries;a++){const etag=await io.meta();const J=await io.read();
+ if(!mut(J))return {J,wrote:false};const st=await io.write(J,etag);if(st>=200&&st<300)return {J,wrote:true,attempts:a};if(st!=412)throw Error('Counter write '+st);await sleep(Math.random()*150*2**a)}
+ throw Error('Counter busy; shared log not updated')}
+return {toLocal,toShared,mergeShared,pushLocal,sharedUpdate,isShared}})();
+/*POSYNC-END*/
+if(typeof window!=='undefined')(function(){
+let busy=false;
+function label(t,ok){const e=$('log-src');e.textContent=t;e.style.color=ok?'#2e7d32':'var(--steel)'}
+function io(){const base=`${GRAPH}/drives/${cfg.drive}/items/${cfg.item}`;return{
+ meta:async()=>{const m=await gfetch(base+'?$select=id,eTag');if(!m.ok)throw Error('Counter metadata '+m.status);return (await m.json()).eTag},
+ read:async()=>{const c=await gfetch(base+'/content');if(!c.ok)throw Error('Counter read '+c.status);return await c.json()},
+ write:async(J,etag)=>(await gfetch(base+'/content',{method:'PUT',headers:{'If-Match':etag,'Content-Type':'application/json'},body:JSON.stringify(J,null,1)})).status}}
+window.syncLog=async function(){if(!shared()){label('Local only (this device) · sign in to see the shared log',0);return}if(busy)return;busy=true;label('Syncing from OneDrive…',0);
+ try{const r=await POSYNC.sharedUpdate(io(),J=>POSYNC.pushLocal(J,D.issued));POSYNC.mergeShared(D.issued,r.J.issued);
+  D.issued.sort((a,b)=>String(a.issuedAt||'').localeCompare(String(b.issuedAt||'')));save();renderLog();
+  label('Synced from OneDrive · '+r.J.issued.length+' POs · '+new Date().toLocaleTimeString(),1)}
+ catch(e){label('Local only · OneDrive sync failed: '+e.message,0)}finally{busy=false}};
+const g=$('gen').onclick;$('gen').onclick=async()=>{const c=await g();renderLog();if(c&&shared())syncLog()};
+const v=$('pod-void').onclick;$('pod-void').onclick=async()=>{await v();renderLog();if(shared())syncLog()};
+label('Local only (this device)',0);
 })();
 </script></body></html>
